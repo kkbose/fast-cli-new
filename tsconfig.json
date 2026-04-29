@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "declaration": true,
+    "importHelpers": true,
+    "module": "commonjs",
+    "outDir": "lib",
+    "allowJs": true,
+    "rootDir": "src",
+    "strict": true,
+    "target": "es2017",
+    "typeRoots": ["./node_modules/rxjs/dist/types/**/*.d.ts"],
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "src/**/*"
+  ]
+}

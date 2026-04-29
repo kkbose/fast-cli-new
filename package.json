@@ -1,0 +1,78 @@
+{
+  "name": "fast",
+  "description": "FAST CLI Framework",
+  "version": "0.0.9",
+  "bin": {
+    "fast": "./bin/run"
+  },
+  "bugs": "https://github.com/VS/fast/issues",
+  "devDependencies": {
+    "@oclif/dev-cli": "^1.4.4",
+    "@types/node": "^20.0.0",
+    "@types/unzipper": "^0.10.4",
+    "eslint": "^8.0.0",
+    "eslint-config-oclif": "^6.0.159",
+    "globby": "^11.1.0",
+    "rimraf": "^5.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=8.0.0"
+  },
+  "files": [
+    "/bin",
+    "/lib",
+    "/src",
+    "/npm-shrinkwrap.json",
+    "/oclif.manifest.json",
+    "/tsconfig.json"
+  ],
+  "homepage": "https://github.com/VS/fast",
+  "keywords": [
+    "oclif"
+  ],
+  "license": "MIT",
+  "main": "lib/index.js",
+  "oclif": {
+    "commands": "./lib/commands",
+    "bin": "fast",
+    "plugins": [
+      "@oclif/plugin-help"
+    ]
+  },
+  "repository": "VS/fast",
+  "scripts": {
+    "postpack": "rimraf oclif.manifest.json",
+    "posttest": "eslint . --ext .ts --config .eslintrc",
+    "prepack": "rimraf lib && tsc -b && oclif-dev manifest && oclif-dev readme",
+    "test": "echo NO TESTS",
+    "version": "oclif-dev readme && git add README.md"
+  },
+  "types": "lib/index.d.ts",
+  "dependencies": {
+    "@oclif/command": "1.8.0",
+    "@oclif/config": "1.17.0",
+    "@oclif/plugin-help": "3.2.4",
+    "@types/adm-zip": "^0.4.34",
+    "@types/inquirer": "^8.1.3",
+    "@types/lowdb": "^1.0.11",
+    "@types/nw.gui": "^0.0.21",
+    "adm-zip": "^0.5.9",
+    "ajv": "^8.12.0",
+    "chalk": "^4.1.2",
+    "chevrotain": "^9.1.0",
+    "cli-table": "0.3.6",
+    "cli-ux": "^5.6.4",
+    "crypto-js": "^4.1.1",
+    "ejs": "^3.1.10",
+    "fs-jetpack": "^5.1.0",
+    "inquirer": "^8.2.5",
+    "lodash": "^4.17.21",
+    "lowdb": "^3.0.0",
+    "oclif": "^4.23.0",
+    "shortid": "^2.2.16",
+    "tslib": "^2.6.0",
+    "unzipper": "^0.10.14"
+  }
+}
