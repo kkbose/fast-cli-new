@@ -1,3 +1,5 @@
+/* eslint-disable no-eq-null */
+/* eslint-disable eqeqeq */
 /* eslint-disable no-console */
 'use strict'
 /* eslint-disable max-params */
@@ -18,11 +20,7 @@ const EJS_SAFE_RENDER_OPTS = Object.freeze({
   async: false,
 })
 
-const EJS_PATH_DELIMITER_OPTS = Object.freeze({
-  openDelimiter: '{',
-  closeDelimiter: '}',
-  delimiter: '_',
-})
+const SAFE_PATH_EXPR = /^[A-Za-z_$][\w$]*(\.[\w$]+)*$/
 
 /** Own-enumerable locals only, so prototype pollution cannot add EJS-sensitive keys from tainted objects. */
 const ejsLocals = input => {
@@ -152,12 +150,8 @@ const createDirectoryContents = (templatePath, basePath, workspace, templateInpu
 }
 const getContent = (originalContent, input, outputPath, templateSourcePath) => {
   try {
-    const opts = Object.assign(
-      {filename: templateSourcePath},
-      EJS_SAFE_RENDER_OPTS,
-    )
-    const renderTemplate = ejs.compile(originalContent, opts)
-    const content = renderTemplate(ejsLocals(input))
+    const opts = Object.assign({filename: templateSourcePath}, EJS_SAFE_RENDER_OPTS)
+    const content = ejs.render(originalContent, ejsLocals(input), opts)
     return content
   } catch (error) {
     throw `${error} at ${outputPath}`
@@ -165,9 +159,14 @@ const getContent = (originalContent, input, outputPath, templateSourcePath) => {
 }
 const getOutputPath = (rawPath, input) => {
   try {
-    const opts = Object.assign({}, EJS_PATH_DELIMITER_OPTS, EJS_SAFE_RENDER_OPTS)
-    const renderPathTemplate = ejs.compile(rawPath, opts)
-    const p = renderPathTemplate(ejsLocals(input))
+    const p = String(rawPath).replace(/\{_([\s\S]+?)_\}/g, (match, exprRaw) => {
+      const expr = String(exprRaw).trim().replace(/^=\s*/, '')
+      if (!SAFE_PATH_EXPR.test(expr)) {
+        throw new Error(`Unsafe path template expression: "${expr}"`)
+      }
+      const value = _.get(input, expr)
+      return value == null ? '' : String(value)
+    })
     // p = p.trim();
     // console.log(p.includes("undefined"));
     return path.normalize(p.trim())
