@@ -1,5 +1,3 @@
-/* eslint-disable no-eq-null */
-/* eslint-disable eqeqeq */
 /* eslint-disable no-console */
 'use strict'
 /* eslint-disable max-params */
@@ -20,12 +18,14 @@ const EJS_SAFE_RENDER_OPTS = Object.freeze({
   async: false,
 })
 
-const SAFE_PATH_EXPR = /^[A-Za-z_$][\w$]*(\.[\w$]+)*$/
+const EJS_FILENAME_EXPR_PATTERN = /\{_%=\s*([A-Za-z0-9_$.[\]]+)\s*%_\}/g
+const TEMPLATE_BASE_DIR = path.resolve(__dirname, 'templates')
 
 /** Own-enumerable locals only, so prototype pollution cannot add EJS-sensitive keys from tainted objects. */
 const ejsLocals = input => {
   const data = Object.create(null)
   if (input == null || typeof input !== 'object') {
+    data.utils = Object.create(null)
     return data
   }
   for (const key of Object.keys(input)) {
@@ -33,8 +33,37 @@ const ejsLocals = input => {
       data[key] = input[key]
     }
   }
+  if (data.utils == null || typeof data.utils !== 'object') {
+    data.utils = Object.create(null)
+  }
   return data
 }
+/** Resolve template path inside trusted base and block traversal. */
+const getTrustedTemplateContent = (templateSourcePath, templateBaseDir = TEMPLATE_BASE_DIR) => {
+  if (typeof templateSourcePath !== 'string' || templateSourcePath.trim() === '') {
+    throw new Error('Invalid template source path')
+  }
+  if (typeof templateBaseDir !== 'string' || templateBaseDir.trim() === '') {
+    throw new Error('Invalid template base path')
+  }
+  const resolvedBaseDir = path.resolve(templateBaseDir)
+  const resolvedPath = path.resolve(resolvedBaseDir, templateSourcePath)
+  if (!resolvedPath.startsWith(resolvedBaseDir + path.sep)) {
+    throw new Error('Access denied: outside trusted template directory')
+  }
+  if (!fs.existsSync(resolvedPath)) {
+    throw new Error(`Template not found: ${templateSourcePath}`)
+  }
+  return fs.readFileSync(resolvedPath, 'utf8')
+}
+const renderOutputPathTemplate = (rawPath, input) =>
+  rawPath.replace(EJS_FILENAME_EXPR_PATTERN, (_, expression) => {
+    const value = _.get(input, expression)
+    if (value == null) {
+      return ''
+    }
+    return String(value)
+  })
 const generateFiles = async (workspace, templatePath, templateInput, lookup, varLookup) => {
   const getRef = ref(varLookup)
   const manifestPath = path.join(templatePath, 'manifest.json')
@@ -67,7 +96,7 @@ const generateFiles = async (workspace, templatePath, templateInput, lookup, var
       // task Generation
       const taskOutputQueue = []
       if (Object.keys(tasks).length > 0) {
-        Object.keys(tasks).forEach(t => {
+        for (const t of Object.keys(tasks)) {
           let taskInput
           if (typeof tasks[t] === 'string') {
             taskInput = _.get(templateInput, tasks[t])
@@ -78,7 +107,7 @@ const generateFiles = async (workspace, templatePath, templateInput, lookup, var
           }
           // console.log("task input is",taskInput);
           if (taskInput.length > 0) {
-            taskInput.forEach(i => {
+            for (const i of taskInput) {
               const taskTemplatePath = path.join(templatePath, 'tasks', t)
               if (!fs.existsSync(taskTemplatePath)) {
                 throw `${taskTemplatePath} does not exits`
@@ -87,17 +116,17 @@ const generateFiles = async (workspace, templatePath, templateInput, lookup, var
               if (i.path !== undefined) {
                 taskPath = i.path
               }
-              taskOutputQueue.push(
-                // eslint-disable-next-line @typescript-eslint/no-use-before-define
-                ...createDirectoryContents(taskTemplatePath, taskPath, workspace, Object.assign(Object.assign({lookup,
-                  data, appInput: Object.assign({}, templateInput)}, i), {utils: Object.assign(Object.assign(Object.assign({}, utilsImport), _), {getRef})}), []))
-            })
+              // eslint-disable-next-line @typescript-eslint/no-use-before-define
+              const taskQueue = await createDirectoryContents(taskTemplatePath, taskPath, workspace, Object.assign(Object.assign({lookup,
+                data, appInput: Object.assign({}, templateInput)}, i), {utils: Object.assign(Object.assign(Object.assign({}, utilsImport), _), {getRef})}), [])
+              taskOutputQueue.push(...taskQueue)
+            }
           }
-        })
+        }
       }
       // code generation
       // eslint-disable-next-line @typescript-eslint/no-use-before-define
-      const queue = createDirectoryContents(path.join(templatePath, 'template'), workspace, workspace, Object.assign(Object.assign({}, templateInput), {utils: Object.assign(Object.assign(Object.assign({}, utilsImport), _), {getRef}), data, lookup}), [])
+      const queue = await createDirectoryContents(path.join(templatePath, 'template'), workspace, workspace, Object.assign(Object.assign({}, templateInput), {utils: Object.assign(Object.assign(Object.assign({}, utilsImport), _), {getRef}), data, lookup}), [], templatePath)
       let outputGen = [...queue, ...taskOutputQueue]
       if (fs.existsSync(postProcessPath)) {
         try {
@@ -112,17 +141,16 @@ const generateFiles = async (workspace, templatePath, templateInput, lookup, var
     }
   }
 }
-const createDirectoryContents = (templatePath, basePath, workspace, templateInput, queue) => {
+const createDirectoryContents = async (templatePath, basePath, workspace, templateInput, queue, templateRootPath = templatePath) => {
   const filesToCreate = fs.readdirSync(templatePath)
-  filesToCreate.forEach(file => {
+  for (const file of filesToCreate) {
     const origFilePath = path.join(templatePath, file)
     const stats = fs.statSync(origFilePath)
     if (stats.isFile()) {
-      const templateContent = fs.readFileSync(origFilePath, 'utf8')
       // eslint-disable-next-line @typescript-eslint/no-use-before-define
-      const outputPath = getOutputPath(path.join(basePath, file), Object.assign({}, templateInput))
+      const outputPath = await getOutputPath(path.join(basePath, file), Object.assign({}, templateInput))
       // eslint-disable-next-line @typescript-eslint/no-use-before-define
-      const outputContent = getContent(templateContent, templateInput, outputPath, origFilePath)
+      const outputContent = await getContent(templateInput, outputPath, origFilePath, templateRootPath)
       if (fs.existsSync(outputPath)) {
         const originalContent = fs.readFileSync(outputPath, 'utf8')
         queue.push({
@@ -143,30 +171,24 @@ const createDirectoryContents = (templatePath, basePath, workspace, templateInpu
         })
       }
     } else {
-      createDirectoryContents(origFilePath, path.join(basePath, file), workspace, templateInput, queue)
+      await createDirectoryContents(origFilePath, path.join(basePath, file), workspace, templateInput, queue, templateRootPath)
     }
-  })
+  }
   return queue
 }
-const getContent = (originalContent, input, outputPath, templateSourcePath) => {
+const getContent = async (input, outputPath, templateSourcePath, templateRootPath) => {
   try {
+    const relativeTemplatePath = path.relative(path.resolve(templateRootPath), path.resolve(templateSourcePath))
+    const trustedTemplateContent = getTrustedTemplateContent(relativeTemplatePath, templateRootPath)
     const opts = Object.assign({filename: templateSourcePath}, EJS_SAFE_RENDER_OPTS)
-    const content = ejs.render(originalContent, ejsLocals(input), opts)
-    return content
+    return ejs.render(trustedTemplateContent, ejsLocals(input), opts)
   } catch (error) {
     throw `${error} at ${outputPath}`
   }
 }
-const getOutputPath = (rawPath, input) => {
+const getOutputPath = async (rawPath, input) => {
   try {
-    const p = String(rawPath).replace(/\{_([\s\S]+?)_\}/g, (match, exprRaw) => {
-      const expr = String(exprRaw).trim().replace(/^=\s*/, '')
-      if (!SAFE_PATH_EXPR.test(expr)) {
-        throw new Error(`Unsafe path template expression: "${expr}"`)
-      }
-      const value = _.get(input, expr)
-      return value == null ? '' : String(value)
-    })
+    const p = renderOutputPathTemplate(rawPath, ejsLocals(input))
     // p = p.trim();
     // console.log(p.includes("undefined"));
     return path.normalize(p.trim())
