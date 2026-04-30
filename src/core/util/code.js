@@ -39,7 +39,7 @@ const ejsLocals = input => {
   return data
 }
 /** Resolve template path inside trusted base and block traversal. */
-const getTrustedTemplateContent = (templateSourcePath, templateBaseDir = TEMPLATE_BASE_DIR) => {
+const getTrustedTemplatePath = (templateSourcePath, templateBaseDir = TEMPLATE_BASE_DIR) => {
   if (typeof templateSourcePath !== 'string' || templateSourcePath.trim() === '') {
     throw new Error('Invalid template source path')
   }
@@ -54,8 +54,18 @@ const getTrustedTemplateContent = (templateSourcePath, templateBaseDir = TEMPLAT
   if (!fs.existsSync(resolvedPath)) {
     throw new Error(`Template not found: ${templateSourcePath}`)
   }
-  return fs.readFileSync(resolvedPath, 'utf8')
+  return resolvedPath
 }
+const renderTemplateFile = (templatePath, locals, opts) =>
+  new Promise((resolve, reject) => {
+    ejs.renderFile(templatePath, locals, opts, (error, content) => {
+      if (error) {
+        reject(error)
+        return
+      }
+      resolve(content)
+    })
+  })
 const renderOutputPathTemplate = (rawPath, input) =>
   rawPath.replace(EJS_FILENAME_EXPR_PATTERN, (_, expression) => {
     const value = _.get(input, expression)
@@ -179,10 +189,9 @@ const createDirectoryContents = async (templatePath, basePath, workspace, templa
 const getContent = async (input, outputPath, templateSourcePath, templateRootPath) => {
   try {
     const relativeTemplatePath = path.relative(path.resolve(templateRootPath), path.resolve(templateSourcePath))
-    const trustedTemplateContent = getTrustedTemplateContent(relativeTemplatePath, templateRootPath)
-    const opts = Object.assign({filename: templateSourcePath}, EJS_SAFE_RENDER_OPTS)
-    // NOSONAR: Template path is restricted to trusted directory and not user-controlled
-    return ejs.render(trustedTemplateContent, ejsLocals(input), opts)
+    const trustedTemplatePath = getTrustedTemplatePath(relativeTemplatePath, templateRootPath)
+    const opts = Object.assign({filename: trustedTemplatePath}, EJS_SAFE_RENDER_OPTS)
+    return await renderTemplateFile(trustedTemplatePath, ejsLocals(input), opts)
   } catch (error) {
     throw `${error} at ${outputPath}`
   }
