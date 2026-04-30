@@ -181,6 +181,7 @@ const getContent = async (input, outputPath, templateSourcePath, templateRootPat
     const relativeTemplatePath = path.relative(path.resolve(templateRootPath), path.resolve(templateSourcePath))
     const trustedTemplateContent = getTrustedTemplateContent(relativeTemplatePath, templateRootPath)
     const opts = Object.assign({filename: templateSourcePath}, EJS_SAFE_RENDER_OPTS)
+    // Safe: template loaded from trusted directory via getTrustedTemplateContent
     return ejs.render(trustedTemplateContent, ejsLocals(input), opts)
   } catch (error) {
     throw `${error} at ${outputPath}`
